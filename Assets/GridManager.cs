@@ -1,54 +1,48 @@
+using System;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class GridManager : Singleton<GridManager>
 {
-    [SerializeField] private Block blockPrefab;
-    [SerializeField] private Block wallblockPrefab;
+    public Tilemap tilemap;
+    public TileBase floorTile, wallTile, appleTile, snakeHeadTile, snakeBodyTile;
 
     public int xSize, ySize;
-    [SerializeField] private Transform origin;
-    [SerializeField] private Transform blockParent;
 
-    private float gridCellSize;
-
-    Block[,] blocks; // x, y
-
-    public void InitGrid()
+    private void Start()
     {
-        gridCellSize = blockPrefab.GetComponent<SpriteRenderer>().bounds.size.x;
-        blocks = new Block[xSize, ySize];
+        print(1);
+    }
 
-        for (int y = 0; y < ySize; y++)
-            for (int x = 0; x < xSize; x++)
+    public void GenerateSnakeMap()
+    {
+        // 전체 바닥 타일 배치
+        for (int x = 0; x < xSize; x++)
+        {
+            for (int y = 0; y < ySize; y++)
             {
-                Block block;
-
-                if (y == 0 || x == 0 || y == ySize - 1 || x == xSize - 1)
-                    block = Instantiate(wallblockPrefab, GetPosByGrid(x, y), Quaternion.identity, blockParent);
-                else
-                    block = Instantiate(blockPrefab, GetPosByGrid(x, y), Quaternion.identity, blockParent);
-
-                blocks[x, y] = block;
-                block.InitBlock(x, y);
+                Vector3Int pos = new Vector3Int(x, y, 0);
+                tilemap.SetTile(pos, floorTile);
             }
+        }
 
+        // 가장자리 벽 배치
+        for (int i = 0; i < xSize; i++)
+        {
+            // 상하 벽
+            tilemap.SetTile(new Vector3Int(i, 0, 0), wallTile);
+            tilemap.SetTile(new Vector3Int(i, ySize - 1, 0), wallTile);
+
+        }
+
+        for (int i = 0; i < ySize; i++)
+        {
+            // 좌우 벽
+            tilemap.SetTile(new Vector3Int(0, i, 0), wallTile);
+            tilemap.SetTile(new Vector3Int(xSize - 1, i, 0), wallTile);
+        }
+
+       
     }
 
-    // 오버로딩 해둠
-    public Vector3 GetPosByGrid((int, int) gridTuple)
-    {
-        int x = gridTuple.Item1, y = gridTuple.Item2;
-        return new Vector3(origin.position.x + (x + 1 / 2) * gridCellSize, origin.position.y + (y + 1 / 2) * gridCellSize, 0);
-    }
-
-    public Vector3 GetPosByGrid(int x, int y)
-    {
-        return new Vector3(origin.position.x + (x + 1 / 2) * gridCellSize, origin.position.y + (y + 1 / 2) * gridCellSize, 0);
-    }
-
-    public bool IsInsideWall((int, int) gridTuple)
-    {
-        int x = gridTuple.Item1, y = gridTuple.Item2;
-        return x > 0 && x < xSize - 1 && y > 0 && y < ySize - 1;
-    }
 }

@@ -1,21 +1,24 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class Snake : MonoBehaviour
 {
-    [SerializeField] private GameObject head;
-    [SerializeField] private GameObject tailParent;
-    [SerializeField] private GameObject tailBlockPrefab; // 걍 색만 바꾼거
-    [SerializeField] private GameObject appleBlockPrefab; // 걍 색만 바꾼거
+    private Tilemap tilemap => GridManager.Instance.tilemap;
+    private int xSize => GridManager.Instance.xSize;
+    private int ySize => GridManager.Instance.ySize;
+
+    private TileBase appleTile => GridManager.Instance.appleTile;
+    private TileBase wallTile => GridManager.Instance.wallTile;
+    private TileBase floorTile => GridManager.Instance.floorTile;
+    private TileBase snakeHeadTile => GridManager.Instance.snakeHeadTile;
+    private TileBase snakeBodyTile => GridManager.Instance.snakeBodyTile;
+
 
     [SerializeField] private float moveInterval = 0.5f;
-
     private float timer;
 
-    private (int, int) HeadGridPos => headBlock.gridPos;
-
-    private Block headBlock;
-    private List<Block> tailBlocks;
+    private List<Vector3Int> snakeBodyCoords;
 
     private Direction currentDirection;
     private Direction prevDirection;
@@ -32,16 +35,29 @@ public class Snake : MonoBehaviour
     /// </summary>
     public void Init()
     {
-        headBlock = head.GetComponent<Block>();
-        headBlock.gridPos = (GridManager.Instance.xSize / 2, GridManager.Instance.ySize / 2);
-        headBlock.MoveBlockToThisGridPos(HeadGridPos);
-
         timer = 0f;
-        tailBlocks = new List<Block>();
+
+        Vector3Int firstPos = new Vector3Int(xSize / 2, ySize / 2, 0);
+        snakeBodyCoords = new List<Vector3Int>();
+        snakeBodyCoords.Add(firstPos);
+        tilemap.SetTile(firstPos, snakeHeadTile);
 
         currentDirection = Direction.Right;
+        MoveApple();
+    }
 
-        InitApple();
+    private Vector3Int currentApplePos;
+
+    // 생성 & 이동 겸함
+    private void MoveApple()
+    {
+        do
+        {
+            int x = Random.Range(1, xSize - 1);
+            int y = Random.Range(1, ySize - 1);
+            currentApplePos = new Vector3Int(x, y, 0);
+        } while (tilemap.GetTile(currentApplePos) != floorTile);
+        tilemap.SetTile(currentApplePos, appleTile);
     }
 
     private void Update()
@@ -61,67 +77,60 @@ public class Snake : MonoBehaviour
 
     private void Move()
     {
-        // 벽인지 플레이어몸인지 검사
-        (int, int) nextHeadPos = GetNextHeadPos();
-        if (!GridManager.Instance.IsInsideWall(nextHeadPos))
+        Vector3Int nextHeadPos = GetNextHeadPos();
+        TileBase nextTile = tilemap.GetTile(nextHeadPos);
+
+        if (nextTile != floorTile && nextTile != appleTile)
         {
             GameManager.Instance.GameOver();
             return;
         }
 
-        for (int i = 0; i < tailBlocks.Count; i++)
-        {
-            if (nextHeadPos == tailBlocks[i].gridPos)
-            {
-                GameManager.Instance.GameOver();
-                return;
-            }
-        }
+        tilemap.SetTile(nextHeadPos, snakeHeadTile);
+        snakeBodyCoords.Insert(0, nextHeadPos); // 리스트 맨 앞에 새 머리 좌표 추가
 
-        bool ateApple = false;
         // 사과 (있으면) 먹기
-        if (nextHeadPos == CurrentAppleGridPos)
-        {
-            ExtendTail();
+        bool ateApple = false;
+        if (nextHeadPos == currentApplePos)
             ateApple = true;
-        }
 
-        // 테일 이동
-        for (int i = tailBlocks.Count - 1; i >= 0; i--)
+        if (ateApple)
         {
-            if (i == 0)
-                tailBlocks[i].SetGridAndMove(HeadGridPos);
-            else
-                tailBlocks[i].SetGridAndMove(tailBlocks[i - 1].gridPos);
+            tilemap.SetTile(snakeBodyCoords[1], snakeBodyTile);
+            MoveApple();
         }
+        else
+        {
+            if (snakeBodyCoords.Count <= 2)
+            {
+                tilemap.SetTile(snakeBodyCoords[1], floorTile);
+            }
+            else
+            {
+                tilemap.SetTile(snakeBodyCoords[1], snakeBodyTile);
+            }
 
-        // 헤드 이동
-        headBlock.gridPos = nextHeadPos;
-        headBlock.MoveBlockToThisGridPos(HeadGridPos);
+            tilemap.SetTile(snakeBodyCoords[snakeBodyCoords.Count - 1], floorTile);
+            snakeBodyCoords.RemoveAt(snakeBodyCoords.Count - 1);
+        }
 
         prevDirection = currentDirection;
-
-        // 사과 먹었으면 이동
-        if (ateApple)
-            MoveApple();
     }
 
-
-    private (int, int) GetNextHeadPos()
+    private Vector3Int GetNextHeadPos()
     {
-        switch (currentDirection)
+        Vector3Int headPos = snakeBodyCoords[0];
+
+        Vector3Int directionVector = currentDirection switch
         {
-            case Direction.Up:
-                return (HeadGridPos.Item1, HeadGridPos.Item2 + 1);
-            case Direction.Down:
-                return (HeadGridPos.Item1, HeadGridPos.Item2 - 1);
-            case Direction.Left:
-                return (HeadGridPos.Item1 - 1, HeadGridPos.Item2);
-            case Direction.Right:
-                return (HeadGridPos.Item1 + 1, HeadGridPos.Item2);
-            default:
-                throw new System.Exception("Invalid direction");
-        }
+            Direction.Up => Vector3Int.up,
+            Direction.Down => Vector3Int.down,
+            Direction.Left => Vector3Int.left,
+            Direction.Right => Vector3Int.right,
+            _ => Vector3Int.zero
+        };
+
+        return headPos + directionVector;
     }
 
     private void ChangeDirection()
@@ -134,52 +143,5 @@ public class Snake : MonoBehaviour
             currentDirection = Direction.Left;
         else if (Input.GetKeyDown(KeyCode.D) && prevDirection != Direction.Left)
             currentDirection = Direction.Right;
-    }
-
-
-    private (int, int) CurrentAppleGridPos => appleBlock.gridPos;
-    private Block appleBlock;
-
-    private void InitApple()
-    {
-        appleBlock = Instantiate(appleBlockPrefab, Vector3.zero, Quaternion.identity, transform).GetComponent<Block>();
-        MoveApple();
-    }
-
-    private bool IsOverlapWithSnakeBody((int, int) targetApplePosTuple)
-    {
-        if (targetApplePosTuple == HeadGridPos)
-            return true;
-
-        for (int i = 0; i < tailBlocks.Count; i++)
-            if (targetApplePosTuple == tailBlocks[i].gridPos)
-                return true;
-
-        return false;
-    }
-
-    private void MoveApple()
-    {
-        (int, int) appleGridTarget;
-        do
-        {
-            appleGridTarget = (Random.Range(1, GridManager.Instance.xSize - 1), Random.Range(1, GridManager.Instance.ySize - 1));
-        }
-        while (IsOverlapWithSnakeBody(appleGridTarget));
-
-        appleBlock.SetGridAndMove(appleGridTarget);
-    }
-
-    // 사과먹음
-    private void ExtendTail()
-    {
-        Block newTailBlock = Instantiate(tailBlockPrefab, Vector3.zero, Quaternion.identity, tailParent.transform).GetComponent<Block>();
-
-        if (tailBlocks.Count == 0)
-            newTailBlock.SetGridAndMove(HeadGridPos);
-        else
-            newTailBlock.SetGridAndMove(tailBlocks[tailBlocks.Count - 1].gridPos);
-
-        tailBlocks.Add(newTailBlock);
     }
 }
